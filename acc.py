@@ -9,43 +9,41 @@ from pathlib import Path
 from collections import defaultdict
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import OpenAI, APIError
+from openai import AzureOpenAI, APIError
 
 from model_config import JUDGE_CONFIG
 
 # ==============================================================================
-# 1. Configuration (Modified to allow direct assignment for testing/demand)
+# 1. Configuration – Azure OpenAI judge
 # ==============================================================================
 
-DIRECT_ASSIGNED_API_KEY = "YOUR_API_KEY_GOES_HERE"
-DIRECT_ASSIGNED_MODEL_NAME = None  # Override to set; else env or model_config default
+_JUDGE_API_KEY = JUDGE_CONFIG.get("api_key") or os.getenv("AZURE_OPENAI_API_KEY")
+_JUDGE_MODEL = os.getenv("JUDGE_MODEL_NAME") or JUDGE_CONFIG.get("model_name")
 
-API_KEY = DIRECT_ASSIGNED_API_KEY
-if not API_KEY or API_KEY == "YOUR_API_KEY_GOES_HERE":
-    API_KEY = os.getenv("OPENAI_API_KEY")
-
-JUDGE_MODEL_NAME = DIRECT_ASSIGNED_MODEL_NAME or os.getenv(
-    "JUDGE_MODEL_NAME", JUDGE_CONFIG["model_name"]
-)
-
-# Initialize OpenAI client
 try:
-    if not API_KEY:
-        raise ValueError("Missing essential API key. Please set DIRECT_ASSIGNED_API_KEY or OPENAI_API_KEY.")
-        
-    # Standard OpenAI client initialization
-    client = OpenAI(
-        api_key=API_KEY,
+    if not _JUDGE_API_KEY:
+        raise ValueError(
+            "Missing judge API key. Set JUDGE_CONFIG['api_key'] in model_config.py or AZURE_OPENAI_API_KEY."
+        )
+    if not JUDGE_CONFIG.get("azure_endpoint"):
+        raise ValueError("Missing JUDGE_CONFIG['azure_endpoint'] in model_config.py.")
+    if not _JUDGE_MODEL:
+        raise ValueError(
+            "Missing judge model. Set JUDGE_CONFIG['model_name'] in model_config.py or JUDGE_MODEL_NAME."
+        )
+    client = AzureOpenAI(
+        azure_endpoint=JUDGE_CONFIG["azure_endpoint"],
+        api_version=JUDGE_CONFIG.get("api_version") or "2025-01-01-preview",
+        api_key=_JUDGE_API_KEY,
     )
-    judge_model_name = JUDGE_MODEL_NAME
-    print(f"Successfully initialized Standard OpenAI client.")
+    judge_model_name = _JUDGE_MODEL
+    print("Successfully initialized Azure OpenAI client for the LLM judge.")
     print(f"Using model '{judge_model_name}' as the LLM judge.")
 except ValueError as e:
     print(f"Configuration Error: {e}")
-    print("Please set the API key directly in the script or via OPENAI_API_KEY environment variable.")
     exit(1)
 except Exception as e:
-    print(f"Failed to initialize OpenAI client: {e}")
+    print(f"Failed to initialize Azure OpenAI client: {e}")
     exit(1)
 
 # Caching and Lock for the LLM judge
@@ -110,7 +108,6 @@ def judge_with_llm(question: str, ground_truth: str, model_response: str) -> boo
     retries = 3
     for i in range(retries):
         try:
-            # Use the model name directly as required by the standard OpenAI client
             response = client.chat.completions.create(
                 model=judge_model_name,
                 messages=messages,

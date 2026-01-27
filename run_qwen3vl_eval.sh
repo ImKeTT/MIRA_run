@@ -1,9 +1,10 @@
 #!/bin/bash
-# Full pipeline: download MIRA -> evaluate with qwen3_vl (8 workers, all 3 scenarios) -> accuracy with GPT-4o judge (1 worker) -> save to results.txt
+# Full pipeline: download MIRA -> evaluate with qwen3_vl (8 workers, all 3 scenarios) -> accuracy with Azure judge (1 worker) -> save to results.txt
 #
-# Required env:
-#   - Azure: set in model_config.py for qwen3_vl (api_key, api_version, azure_endpoint, model_name)
-#   - OPENAI_API_KEY: for acc.py GPT-4o judge (--use-llm-judge)
+# Required: in model_config.py
+#   - MODEL_CONFIG["qwen3_vl"]: api_key, api_version, azure_endpoint, model_name (for eval)
+#   - JUDGE_CONFIG: api_key, api_version, azure_endpoint, model_name (for acc --use-llm-judge)
+#   - Optional: AZURE_OPENAI_API_KEY env overrides JUDGE_CONFIG["api_key"]
 #
 # Prereq: pip install -r requirements.txt
 
@@ -31,11 +32,7 @@ python eval_azure_api.py \
   -m qwen3_vl
 
 echo ""
-echo "========== 3. Accuracy with GPT-4o judge (1 worker), save to $RESULTS_FILE =========="
-if [ -z "${OPENAI_API_KEY:-}" ]; then
-  echo "Error: OPENAI_API_KEY is not set. Required for acc.py --use-llm-judge (GPT-4o)."
-  exit 1
-fi
+echo "========== 3. Accuracy with Azure judge (1 worker), save to $RESULTS_FILE =========="
 python acc.py \
   -r "$EVAL_OUTPUT_DIR" \
   --use-llm-judge \

@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 MODEL_CONFIG = {
     "gpt4o": {
-        "model_name": "",
+        "model_name": "",  # e.g. "gpt-4o", "gpt-4o-2024-12-xx", or your Azure deployment name
         "api_key": "",
         "api_version": "",
         "azure_endpoint": ""
@@ -18,9 +18,12 @@ MODEL_CONFIG = {
 }
 
 # -----------------------------------------------------------------------------
-# Standard OpenAI judge (acc.py) – model name for LLM judging; API key from
-# OPENAI_API_KEY or DIRECT_ASSIGNED_API_KEY in acc.py
+# Azure OpenAI judge (acc.py) – LLM judging via Azure. api_key can be overridden
+# by AZURE_OPENAI_API_KEY env if you prefer not to put it in this file.
 # -----------------------------------------------------------------------------
 JUDGE_CONFIG = {
-    "model_name": "gpt-4o",
+    "model_name": "",   # e.g. "gpt-4o", "gpt-4o-2024-12-xx", or your Azure deployment name
+    "api_key": "",
+    "api_version": "",
+    "azure_endpoint": "",
 }
