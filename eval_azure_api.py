@@ -132,7 +132,7 @@ def call_openai_api_with_retry(client, model_name, messages, max_retries=20):
             response = client.chat.completions.create(
                 model=model_name,
                 messages=messages,
-                max_tokens=36000,
+                max_tokens=32000,
             )
             return response
         except Exception as e:
@@ -257,30 +257,61 @@ def process_single_task(client, model_name, model_alias, data_item, task_dir, sc
 # 3. Model-Level Benchmark Runner
 # ==============================================================================
 
+def _load_done_set(model_alias: str, output_dir: Path) -> dict[str, set[tuple]]:
+    """
+    For this model, scan existing output .jsonl files and return
+    task_name -> set of (uid, scenario) that already have a non-empty response.
+    Treats empty string and "API_CALL_FAILED" as not done (will be (re)generated).
+    """
+    done: dict[str, set[tuple]] = {}
+    for p in output_dir.glob(f"{model_alias}_*.jsonl"):
+        # p.stem = "model_task" -> task_name = p.stem[len(model_alias)+1:]
+        task_name = p.stem[len(model_alias) + 1 :]
+        s = set()
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    obj = json.loads(line)
+                    r = obj.get("response")
+                    if isinstance(r, str) and r and r != "API_CALL_FAILED":
+                        s.add((obj.get("uid"), obj.get("scenario")))
+        except (OSError, json.JSONDecodeError):
+            pass
+        if s:
+            done[task_name] = s
+    return done
+
+
 def run_benchmark_for_model(model_alias, base_tasks, output_dir, workers_per_model, pbar_position):
     """
     Run all benchmark tasks for a single model with concurrent workers.
-    
-    Args:
-        model_alias: Model identifier
-        base_tasks: List of (data_item, task_dir, scenario) tuples
-        output_dir: Directory to save results
-        workers_per_model: Number of concurrent workers for this model
-        pbar_position: Position for progress bar in terminal
+    Resume by default: skips (uid, scenario) that already have a non-empty response.
     """
     try:
         client, model_name = get_model_client(model_alias)
     except Exception as e:
         print(f"Failed to initialize client for {model_alias}: {e}", file=sys.stderr)
         return
-    
+
+    done = _load_done_set(model_alias, output_dir)
+    filtered = []
+    for data_item, task_dir, scenario in base_tasks:
+        key = (data_item.get("uid"), scenario)
+        if key not in done.get(task_dir.name, set()):
+            filtered.append((data_item, task_dir, scenario))
+
+    if not filtered:
+        return
+
     with ThreadPoolExecutor(max_workers=workers_per_model) as executor:
         progress_bar = tqdm(
-            total=len(base_tasks),
+            total=len(filtered),
             desc=f"Model: {model_alias}",
             position=pbar_position
         )
-        
         futures = {
             executor.submit(
                 process_single_task,
@@ -288,9 +319,8 @@ def run_benchmark_for_model(model_alias, base_tasks, output_dir, workers_per_mod
                 data_item, task_dir, scenario,
                 output_dir
             )
-            for data_item, task_dir, scenario in base_tasks
+            for data_item, task_dir, scenario in filtered
         }
-        
         for future in as_completed(futures):
             try:
                 future.result()
@@ -300,7 +330,6 @@ def run_benchmark_for_model(model_alias, base_tasks, output_dir, workers_per_mod
                     file=sys.stderr
                 )
             progress_bar.update(1)
-        
         progress_bar.close()
 
 # ==============================================================================

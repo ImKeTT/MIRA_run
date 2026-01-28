@@ -25,11 +25,36 @@ python download_data.py
 
 echo ""
 echo "========== 2. Evaluate with qwen3_vl (8 workers, direct_answer + text_cot + visual_cot) =========="
-python eval_azure_api.py \
-  -b "$MIRA_DIR" \
-  -o "$EVAL_OUTPUT_DIR" \
-  -w 8 \
-  -m qwen3_vl
+echo "         (loop until complete: re-run on crash or if any response is API_CALL_FAILED or empty)"
+while true; do
+  ret=0
+  python eval_azure_api.py \
+    -b "$MIRA_DIR" \
+    -o "$EVAL_OUTPUT_DIR" \
+    -w 8 \
+    -m qwen3_vl || ret=$?
+
+  if [ "$ret" -ne 0 ]; then
+    echo "eval_azure_api exited $ret, re-running in 10s..."
+    sleep 10
+    continue
+  fi
+
+  failed=0
+  for f in "$EVAL_OUTPUT_DIR"/*.jsonl; do
+    [ -f "$f" ] || continue
+    if grep -q 'API_CALL_FAILED' "$f" 2>/dev/null || grep -qE '"response"[[:space:]]*:[[:space:]]*""' "$f" 2>/dev/null; then
+      failed=1
+      break
+    fi
+  done
+  if [ "$failed" -eq 1 ]; then
+    echo "Some responses are API_CALL_FAILED or empty, re-running eval in 10s..."
+    sleep 10
+    continue
+  fi
+  break
+done
 
 echo ""
 echo "========== 3. Accuracy with Azure judge (1 worker), save to $RESULTS_FILE =========="
