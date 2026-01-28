@@ -20,7 +20,7 @@ echo "========== 0. Check dependencies =========="
 python -c "import huggingface_hub, openai, tqdm, PIL" || { echo "Run: pip install -r requirements.txt"; exit 1; }
 
 echo ""
-echo "========== 1. Download MIRA dataset =========="
+echo "========== 1. Download MIRA dataset (all tasks, 60s between tasks for rate limits) =========="
 python download_data.py
 
 echo ""
